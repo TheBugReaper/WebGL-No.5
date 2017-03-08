@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head lang="en">
+    <meta charset="UTF-8">
+
+    <title></title>
+</head>
+<body>
+<canvas id="CarCanvas" width="1080px" height="720px"></canvas>
+</body>
+<script src="js/three.min.js"></script>
+<script src="js/TrackballControls.js"></script>
+<script>
+
+
+    function init(){
+        /*World: Renderer, Scene and Camera*/
+        renderer = new THREE.WebGLRenderer({
+            canvas:document.getElementById("CarCanvas")
+        });
+        renderer.setClearColor(0x000000); // black
+        renderer.shadowMapEnabled = true;
+        renderer.shadowMapSoft = true;
+
+        scene = new THREE.Scene();
+
+        camera = new THREE.PerspectiveCamera(45, 1.5, 1, 100);
+        camera.position.set(5,3,-6);
+        camera.lookAt(new THREE.Vector3(0, 0, 0));
+        scene.add(camera);
+
+        /*Textures and materials*/
+        rearTex = THREE.ImageUtils.loadTexture('rear.png', {},
+                function(){
+                    renderer.render(scene, camera);
+                });
+        rearMaterial = new THREE.MeshLambertMaterial({
+            map : rearTex
+        });
+
+        frontTex = THREE.ImageUtils.loadTexture('front.png', {},
+                function(){
+                    renderer.render(scene, camera);
+                });
+        frontMaterial = new THREE.MeshLambertMaterial({
+            map : frontTex
+        });
+
+        asideTex = THREE.ImageUtils.loadTexture('aside.png', {},
+                function(){
+                    renderer.render(scene, camera);
+                });
+        asideMaterial = new THREE.MeshLambertMaterial({
+            map : asideTex
+        });
+
+        topMaterial = new THREE.MeshLambertMaterial({
+            color : 0xeeee00
+        });
+
+        tireMaterial = new THREE.MeshLambertMaterial({
+            color : 0xeeeeee
+        });
+
+        planeMaterial = new THREE.MeshLambertMaterial({
+            color : 0xeeeeee
+        });
+
+        //controller
+        controls = new THREE.TrackballControls(camera);
+        controls.rotateSpeed = 1.0;
+        controls.zoomSpeed = 1.2;
+        controls.panSpeed = 0.8;
+        controls.noZoom = false;
+        controls.noPan = false;
+        controls.staticMoving = true;
+        controls.dynamicDampingFactor = 0.3;
+        controls.keys = [ 65, 83, 68 ];
+        controls.addEventListener('change', render);
+
+        //body materials
+        carMaterials = [];
+        carMaterials.push(asideMaterial);
+        carMaterials.push(asideMaterial);
+        carMaterials.push(topMaterial);
+        carMaterials.push(topMaterial);
+        carMaterials.push(frontMaterial);
+        carMaterials.push(rearMaterial);
+
+        //plane
+        var plane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000, 16, 16),
+                planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.y = -1.45;
+        plane.receiveShadow = true;
+        scene.add(plane);
+
+        var yPlane = new THREE.Mesh(new THREE.PlaneGeometry(100, 100, 100, 100),
+                new THREE.MeshBasicMaterial({
+                    wireframe : true
+                }));
+        yPlane.rotation.y = Math.PI/2;
+        scene.add(yPlane);
+
+        var xPlane = new THREE.Mesh(new THREE.PlaneGeometry(100, 100, 100, 100),
+                new THREE.MeshBasicMaterial({
+                    wireframe : true
+                }));
+        scene.add(xPlane);
+
+
+        //light
+        var light = new THREE.PointLight(0xffffff, 2, 20);
+        light.position.set(-4, 3, -5);
+        light.castShadow = true;
+        scene.add(light);
+
+        ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+
+        renderer.render(scene, camera);
+
+    }
+
+    function animate(){
+        requestAnimationFrame(animate);
+        controls.update();
+        Hero.update();
+        render();
+    }
+
+    function render(){
+        renderer.render(scene, camera);
+    }
+
+    /**
+     * Car constructor
+     * @param id
+     * @constructor
+     */
+    function Car(id){
+
+        var STATES = {STOP : 0, RUNNING : 1, BACKING : 2};
+        var DIRECTION = {STRAIGHT : 0, LEFT : 1, RIGHT : 2};
+
+        var tire = new THREE.Mesh(new THREE.TorusGeometry(0.4, 0.1, 50, 50),
+                tireMaterial);
+        tire.rotation.set(0, Math.PI/2, 0);
+
+        this.axis = new THREE.Object3D();
+
+        this.id = id;
+        this.body = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 6),
+                new THREE.MeshFaceMaterial(carMaterials));
+
+        this.tires = [];
+        for(var i = 0; i < 4; i++){
+            this.tires.push(tire.clone());
+        }
+        this.tires[0].position.copy({x:-1, y:-1, z:2});
+        this.tires[1].position.copy({x:-1, y:-1, z:-2});
+        this.tires[2].position.copy({x:1, y:-1, z:2});
+        this.tires[3].position.copy({x:1, y:-1, z:-2});
+        this.axis.add(this.body, this.tires[0], this.tires[1], this.tires[2], this.tires[3]);
+        this.position = new THREE.Vector3(0, 0, 0);
+        this.rotation = new THREE.Vector3(0, 0, 0);
+        this.speed = new THREE.Vector3(0, 0, 0.1);
+        this.velocity = this.speed.length();
+        this.state = STATES.STOP;
+        this.direction = DIRECTION.STRAIGHT;
+
+        this.update = function(){
+
+            var tempVec = new THREE.Vector3();
+
+            switch(this.state){
+                case STATES.STOP:
+                    break;
+                case STATES.RUNNING:
+                        this.position.add(this.speed);
+                        for(var i=0; i<4; i++){
+                            this.tires[i].rotation.x += Math.PI/60;
+                        }
+                    break;
+                case STATES.BACKING:
+                        this.position.sub(this.speed);
+                        for(i=0; i<4; i++){
+                            this.tires[i].rotation.x -= Math.PI/60;
+                        }
+                    break;
+                default :
+                    break;
+            }
+
+            switch(this.direction){
+                case DIRECTION.STRAIGHT:
+                    break;
+                case DIRECTION.LEFT:
+                        this.rotation.y += Math.PI/60;
+                        this.axis.rotation.set(this.rotation.x, this.rotation.y, this.rotation.z);
+//                        tempVec.addVectors(this.rotation, {x:0, y:Math.PI/40, z:0});
+//                        for(i=0; i<4; i++){
+//                            this.tires[i].rotation.set(this.rotation.x, Math.PI/2, this.rotation.z);
+//                        }
+                        this.speed.copy({x: this.velocity * Math.sin(this.rotation.y), y:0, z:this.velocity * Math.cos(this.rotation.y)});
+                    break;
+                case DIRECTION.RIGHT:
+                        this.rotation.y -= Math.PI/60;
+                        this.axis.rotation.set(this.rotation.x, this.rotation.y, this.rotation.z);
+//                        tempVec.addVectors(this.rotation, {x:0, y:-Math.PI/40, z:0});
+//                        for(i=0; i<4; i++){
+//                            this.tires[i].rotation.set(this.rotation.x, Math.PI/2, this.rotation.z);
+//                        }
+                        this.speed.copy({x: this.velocity * Math.sin(this.rotation.y), y:0, z:this.velocity * Math.cos(this.rotation.y)});
+                    break;
+                default:
+                    break;
+            }
+
+            this.axis.position.copy(this.position);
+        };
+
+        this.update();
+        scene.add(this.axis);
+    }
+
+
+    init();
+    Hero = new Car(0);
+    animate();
+
+    var forward = false;
+    var back = false;
+    window.addEventListener("keydown", function(e){
+        switch (e.keyCode) {
+            //W
+            case 87:
+                    forward = true;
+                    Hero.state = 1;
+                break;
+            //D
+            case 68:
+                    Hero.direction = 2;
+                break;
+            //A
+            case 65:
+                    Hero.direction = 1;
+                break;
+            //S
+            case 83:
+                    back = true;
+                    Hero.state = 2;
+                break;
+        }
+    }, true);
+
+    window.addEventListener("keyup", function(e){
+        switch (e.keyCode) {
+            case 87:
+                Hero.state = 0;
+                break;
+            //S
+            case 83:
+                Hero.state = 0;
+                break;
+            //D
+            case 68:
+                Hero.direction = 0;
+                break;
+            //A
+            case 65:
+                Hero.direction = 0;
+                break;
+        }
+    },true)
+
+</script>
+</html>
